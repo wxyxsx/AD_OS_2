@@ -10,8 +10,9 @@ import java.util.Scanner;
 
 public class ToolKits {
     private String fname;
-    private String fpath;
     private long flen;
+
+    // private String serverDir;
 
     public String getFname() {
         return fname;
@@ -82,6 +83,7 @@ public class ToolKits {
     }
 
     public ToolKits() {
+        //serverDir = new File("").getPath();
         finish = 0;
         stop = false;
         tnum = 4;
@@ -91,6 +93,7 @@ public class ToolKits {
 
     public void Sender(String filename) {
         fname = filename;
+        System.out.println(fname);
         File f = new File(fname);
         flen = f.length();
         fhash = genmd5();
@@ -98,15 +101,16 @@ public class ToolKits {
         genburden();
     }
 
-//    public void Sender(String rlpath,boolean sign) {
-//        Path path = Paths.get(rlpath);
-//        fname = rlpath;
-//        File f = new File(fname);
-//        flen = f.length();
-//        fhash = genmd5();
-//        flag = true;
-//        genburden();
-//    }
+    // for client
+    public void Sender(String rlpath, boolean sign) {
+        //getFname只有在server才用到
+        fname = rlpath;
+        File f = new File(fname);
+        flen = f.length();
+        fhash = genmd5();
+        flag = true;
+        genburden();
+    }
 
     //sender
     public RandomAccessFile GetInput(int no, int offset) {
@@ -132,6 +136,7 @@ public class ToolKits {
         return rf;
     }
 
+    // for client
     public void Receriver(String filename, Long filelen, String filehash) {
         fname = prefix + filename;
         flen = filelen;
@@ -141,8 +146,12 @@ public class ToolKits {
         readstatus();
     }
 
-    public void Receriver(String filename, Long filelen, String filehash, boolean sign) {
-        fname = prefix + filename;
+    public void Receriver(String filepath, Long filelen, String filehash, boolean sign) {
+        Path path = Paths.get(filepath);
+        fname = path.getParent().toString()
+                + File.separator
+                + prefix
+                + path.getFileName().toString();
         flen = filelen;
         fhash = filehash;
         flag = false;
@@ -159,6 +168,7 @@ public class ToolKits {
                 for (int i = 0; i < tnum; i++) {
                     status[i] = input.nextInt();
                 }
+                input.close();
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
             }
@@ -204,16 +214,29 @@ public class ToolKits {
 
     //unused
     public void deltmp() {
+        // 之前没能删除是忘了关闭tmp文件
         File f = new File(fname + suffix);
+        //    System.out.println(fname + suffix);
         if (f.exists()) {
             f.delete();
         }
     }
 
-    //unused
+    //todo
     public void rename() {
         File f = new File(fname);
         File nf = new File(fname.substring(1));
+        f.renameTo(nf);
+    }
+
+    public void rename(boolean sign) {
+        File f = new File(fname);
+        Path path = Paths.get(fname);
+        String str = path.getParent().toString()
+                + File.separator
+                + path.getFileName().toString().substring(1);
+        //      System.out.println(str);
+        File nf = new File(str);
         f.renameTo(nf);
     }
 

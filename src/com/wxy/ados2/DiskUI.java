@@ -125,13 +125,15 @@ public class DiskUI extends Application {
                 if (client.isBusy()) {
                     return;
                 }
-                String s = tfname.getText();
-                if(s.isEmpty()){
+                String sf = tfname.getText();
+                String sp = tdown.getText();
+                if (sf.isEmpty() || sf.isEmpty()) {
                     Platform.runLater(()->{
-                        tastatus.appendText("文件名不能为空\n");
+                        tastatus.appendText("请选择文件和文件夹\n");
                     });
                 } else {
-                    client.setFname(s);
+                    client.setFname(sp + File.separatorChar + sf);
+                    // 选择的文件夹+分隔符+文件名
                     client.Download();
                 }
             }).start();
@@ -147,7 +149,7 @@ public class DiskUI extends Application {
                         tastatus.appendText("请选择上传文件\n");
                     });
                 } else {
-                    client.setFname(s);
+                    client.setFname(s); //文件的绝对路径
                     client.Upload();
                     client.Listdir();
                     name = client.getName();
@@ -177,9 +179,6 @@ public class DiskUI extends Application {
         });
         bstop.setOnAction(e->{
             new Thread(()->{
-                if (client.isBusy()) {
-                    return;
-                }
                 client.Stop();
             }).start();
         });
@@ -201,16 +200,14 @@ public class DiskUI extends Application {
         buch.setOnAction(e -> {
             File file = fc.showOpenDialog(primaryStage);
             if (file != null) {
-                // String str = file.getPath();
-//                Path path = Paths.get(str);
-//                tastatus.appendText(str);
-                tupload.setText(file.getPath());
+                tupload.setText(file.getPath()); //获取文件路径
             }
         });
         bdch.setOnAction(e -> {
             File file = dc.showDialog(primaryStage);
             if (file != null) {
                 tdown.setText(file.getPath());
+                //获取文件夹路径
             }
         });
         Scene scene = new Scene(pane,540,370);
@@ -247,6 +244,9 @@ public class DiskUI extends Application {
         HBox h3 = new HBox(10);
         h3.getChildren().addAll(new Label("上传"),tupload,buch,bupload);
         tdown.setPrefColumnCount(8);
+        tdown.setText(new File("").getAbsolutePath());
+        // 文件夹的默认路径为当前文件夹
+
         HBox h4 = new HBox(10);
         h4.getChildren().addAll(new Label("下载"),tdown,bdch,bdown,bstop);
         h1.setPadding(new Insets(5,5,5,5));

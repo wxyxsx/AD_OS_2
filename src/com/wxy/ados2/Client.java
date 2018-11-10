@@ -5,6 +5,8 @@ import javafx.scene.control.TextArea;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -38,10 +40,16 @@ public class Client {
         this.port = port;
     }
 
-    public void setFname(String fname) {
-        this.fname = fname;
+    public void setFname(String s) {
+        // fname依然只有文件名
+        // fpath是文件真实位置
+        Path path = Paths.get(s);
+        this.fpath = s;
+        this.fname = path.getFileName().toString();
+
     }
 
+    private String fpath;
     private String fname;
     private Thread[] th;
     DataInputStream input;
@@ -71,7 +79,6 @@ public class Client {
         session = -1;
         addr = "localhost";
         port = 8000;
-        fname = "test.pdf";
     }
 
     public void Connect() {
@@ -124,7 +131,8 @@ public class Client {
 
             Long flen = input.readLong();
             String fhash = input.readUTF();
-            tool.Receriver(fname, flen, fhash);
+            tool.Receriver(fpath, flen, fhash, true);
+            //todo
             th = new Thread[tnum];
             for (int i = 0; i < tnum; i++) {
                 th[i] = new Thread(new receiver(i));
@@ -141,10 +149,10 @@ public class Client {
             } else if (tool.CheckMd5()) {
                 output.writeInt(1);
                 Platform.runLater(() -> {
-                    tool.deltmp();
-                    tool.rename();
-                    loga.appendText(fname + " 文件下载完成功\n");
+                    loga.appendText(fname + " 文件下载成功\n");
                 });
+                tool.deltmp();
+                tool.rename(true);
             } else {
                 output.writeInt(1);
                 Platform.runLater(() -> {
@@ -165,7 +173,8 @@ public class Client {
             busy = true;
             tool = new ToolKits();
             output.writeInt(1);
-            tool.Sender(fname);
+            tool.Sender(fpath, true);
+            //todo
 
             output.writeUTF(fname);
             output.writeLong(tool.getFlen());
@@ -241,22 +250,22 @@ public class Client {
         }
     }
 
-    public void Delete(String fname) {
+    public void Delete(String name) {
         Platform.runLater(() -> {
-            loga.appendText("请求删除文件 " + fname + "\n");
+            loga.appendText("请求删除文件 " + name + "\n");
         });
         try {
             busy = true;
             output.writeInt(4);
-            output.writeUTF(fname);
+            output.writeUTF(name);
             int r = input.readInt();
             if (r == 1) {
                 Platform.runLater(() -> {
-                    loga.appendText("成功删除文件 " + fname + "\n");
+                    loga.appendText("成功删除文件 " + name + "\n");
                 });
             } else if (r == 0) {
                 Platform.runLater(() -> {
-                    loga.appendText("删除文件失败 " + fname + "\n");
+                    loga.appendText("删除文件失败 " + name + "\n");
                 });
             }
             busy = false;
