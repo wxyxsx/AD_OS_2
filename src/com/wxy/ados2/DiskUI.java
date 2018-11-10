@@ -13,14 +13,19 @@ import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
+import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
 
 public class DiskUI extends Application {
-    private TextField taddr = new TextField("localhost");
+    private TextField taddr = new TextField("222.29.196.155");
     private TextField tport = new TextField("8000");
     private Button bcon = new Button("连接");
     private Button bexit = new Button("断开");
@@ -85,6 +90,9 @@ public class DiskUI extends Application {
         brefresh.setOnAction(e->{
 
             new Thread(()->{
+                if (client.isBusy()) {
+                    return;
+                }
                 client.Listdir();
                 name = client.getName();
                 length = client.getLength();
@@ -94,6 +102,9 @@ public class DiskUI extends Application {
         });
         brename.setOnAction(e->{
             new Thread(()->{
+                if (client.isBusy()) {
+                    return;
+                }
                 String so = tfname.getText();
                 String sn = tnewname.getText();
                 if(so.isEmpty()||sn.isEmpty()){
@@ -111,6 +122,9 @@ public class DiskUI extends Application {
         });
         bdown.setOnAction(e->{
             new Thread(()->{
+                if (client.isBusy()) {
+                    return;
+                }
                 String s = tfname.getText();
                 if(s.isEmpty()){
                     Platform.runLater(()->{
@@ -124,6 +138,9 @@ public class DiskUI extends Application {
         });
         bupload.setOnAction(e->{
             new Thread(()->{
+                if (client.isBusy()) {
+                    return;
+                }
                 String s = tupload.getText();
                 if(s.isEmpty()){
                     Platform.runLater(()->{
@@ -139,8 +156,30 @@ public class DiskUI extends Application {
                 }
             }).start();
         });
+        bdelete.setOnAction(e -> {
+            new Thread(() -> {
+                if (client.isBusy()) {
+                    return;
+                }
+                String s = tfname.getText();
+                if (s.isEmpty()) {
+                    Platform.runLater(() -> {
+                        tastatus.appendText("删除文件名不能为空\n");
+                    });
+                } else {
+                    client.Delete(s);
+                    client.Listdir();
+                    name = client.getName();
+                    length = client.getLength();
+                    refreshlst();
+                }
+            }).start();
+        });
         bstop.setOnAction(e->{
             new Thread(()->{
+                if (client.isBusy()) {
+                    return;
+                }
                 client.Stop();
             }).start();
         });
@@ -154,6 +193,25 @@ public class DiskUI extends Application {
                 client.Close();
             }
             System.exit(0);
+        });
+        FileChooser fc = new FileChooser();
+        fc.setTitle("选择要上传的文件");
+        DirectoryChooser dc = new DirectoryChooser();
+        dc.setTitle("选择要保存的文件夹");
+        buch.setOnAction(e -> {
+            File file = fc.showOpenDialog(primaryStage);
+            if (file != null) {
+                // String str = file.getPath();
+//                Path path = Paths.get(str);
+//                tastatus.appendText(str);
+                tupload.setText(file.getPath());
+            }
+        });
+        bdch.setOnAction(e -> {
+            File file = dc.showDialog(primaryStage);
+            if (file != null) {
+                tdown.setText(file.getPath());
+            }
         });
         Scene scene = new Scene(pane,540,370);
         primaryStage.setTitle("网盘");

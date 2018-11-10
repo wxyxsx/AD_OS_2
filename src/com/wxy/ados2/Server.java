@@ -98,8 +98,8 @@ public class Server {
 
         public void run() {
             try {
-                input = new DataInputStream(socket.getInputStream());
-                output = new DataOutputStream(socket.getOutputStream());
+                input = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
+                output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
                 log.info(String.format("[%d] New thread connected to the system", session));
                 boolean flag = tool[session].isFlag();
                 if (flag == true) {
@@ -113,11 +113,11 @@ public class Server {
         }
 
         private void send() {
+            int cur = 0, i = 0, no = 0, offset = 0;
             try {
-                int no = input.readInt();
-                int offset = input.readInt();
+                no = input.readInt();
+                offset = input.readInt();
 
-                int cur;
                 if (no != tnum - 1) {
                     cur = tool[session].getPerburden();
                 } else {
@@ -130,60 +130,70 @@ public class Server {
 
                 RandomAccessFile fin = tool[session].GetInput(no, offset);
                 byte[] buffer = new byte[bfsize];
-                int i;
                 for (i = 0; i < (cur - offset); i++) {
                     if (tool[session].isStop()) break;
                     int read = fin.read(buffer);
                     if (read == -1) break;
                     output.write(buffer, 0, read);
+                    output.flush();
                 }
 
-                log.info(String.format("[%d,%d] Send progress %d/%d", session, no, i, cur - offset));
-
                 fin.close();
-                input.close();
 
             } catch (IOException e) {
                 e.printStackTrace();
             }
+            log.info(String.format("[%d,%d] Send progress %d/%d", session, no, i + offset, cur));
         }
 
         private void receive() {
+            int no = 0, offset = 0, cur = 0, i = 0;
+            long total = 0, sum = 0;
             try {
-                int no = input.readInt();
-                int offset = tool[session].getStatus(no);
-                output.writeInt(offset);
+                no = input.readInt(); // 获取文件块的序号
+                offset = tool[session].getStatus(no); // 获取保存的进度
+                output.writeInt(offset); // 发送给客户端
+                output.flush();
 
-                int cur;
+
                 if (no != tnum - 1) {
                     cur = tool[session].getPerburden();
+                    total = cur * bfsize;
                 } else {
                     cur = tool[session].getLastburden();
+                    total = tool[session].getFlen() - (tnum - 1) * tool[session].getPerburden() * bfsize;
                 }
                 if (offset == cur) {
+                    // 如果文件块完成
+                    log.info(String.format("[%d,%d] File blocks do not need to be uploaded", session, no));
                     input.close();
                     return;
                 }
+                sum = ((long) offset) * bfsize;
 
                 RandomAccessFile fout = tool[session].GetOutput(no, offset);
                 byte[] buffer = new byte[bfsize];
-                int i;
-                for (i = 0; i < (cur - offset); i++) {
+                while (sum < total) {
                     if (tool[session].isStop()) break;
                     int read = input.read(buffer);
                     if (read == -1) break;
+                    // System.out.printf("[%d,%d,%d]test \n",no,sum,total);
+                    sum = sum + read;
                     fout.write(buffer, 0, read);
                 }
 
-                tool[session].setStatus(no, offset + i);
-                log.info(String.format("[%d,%d] Receive progress %d/%d", session, no, i, cur - offset));
-
                 fout.close();
-                input.close();
-
             } catch (IOException e) {
                 e.printStackTrace();
             }
+            // 防止文件出错
+            tool[session].addfinish();
+            if (sum == total) {
+                tool[session].setStatus(no, cur);
+            } else {
+                tool[session].setStatus(no, (int) (sum / bfsize));
+            }
+            log.info(String.format("[%d,%d] Receive progress %d/%d", session, no, i + offset, cur));
         }
     }
 
@@ -286,15 +296,22 @@ public class Server {
                 int r = input.readInt();
                 if (r == 1) {
                     log.info(String.format("[%d] already upload file %s", session, fname));
-                    Thread.sleep(500);
+                    // 需要等待其它线程结束才能验证
+                    while (!tool[session].isfinish()) {
+                        Thread.sleep(300);
+                    }
                     if (tool[session].CheckMd5()) {
+                        tool[session].deltmp();
+                        tool[session].rename();
                         log.info(String.format("[%d] File %s verification succeeded", session, fname));
                     } else {
                         log.info(String.format("[%d] File %s verification failed", session, fname));
                     }
                 } else if (r == 0) {
                     tool[session].setStop(true);
-                    Thread.sleep(500); // waiting for threads 可以加个tool中的全局变量判断是否所有线程都结束了
+                    while (!tool[session].isfinish()) {
+                        Thread.sleep(300);
+                    } // waiting for threads 可以加个tool中的全局变量判断是否所有线程都结束了
                     tool[session].SaveStatus();
                     log.info(String.format("[%d] pauses uploading files %s", session, fname));
                 }

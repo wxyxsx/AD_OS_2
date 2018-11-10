@@ -2,13 +2,15 @@ package com.wxy.ados2;
 
 import java.io.*;
 import java.math.BigInteger;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Scanner;
 
 public class ToolKits {
     private String fname;
-    private String realpath; //todo realpath以及统计线程完成的情况（服务端）
+    private String fpath;
     private long flen;
 
     public String getFname() {
@@ -59,7 +61,7 @@ public class ToolKits {
         this.flag = flag;
     }
 
-    public void setStatus(int i,int data) {
+    public void setStatus(int i, int data) {
         status[i] = data;
     }
 
@@ -69,7 +71,18 @@ public class ToolKits {
     private final static String prefix = ".";
     private final static String suffix = ".tmp";
 
+    private int finish;
+
+    public boolean isfinish() {
+        return finish == tnum;
+    }
+
+    public void addfinish() {
+        finish++;
+    }
+
     public ToolKits() {
+        finish = 0;
         stop = false;
         tnum = 4;
         bfsize = 1024;
@@ -84,6 +97,16 @@ public class ToolKits {
         flag = true;
         genburden();
     }
+
+//    public void Sender(String rlpath,boolean sign) {
+//        Path path = Paths.get(rlpath);
+//        fname = rlpath;
+//        File f = new File(fname);
+//        flen = f.length();
+//        fhash = genmd5();
+//        flag = true;
+//        genburden();
+//    }
 
     //sender
     public RandomAccessFile GetInput(int no, int offset) {
@@ -110,6 +133,15 @@ public class ToolKits {
     }
 
     public void Receriver(String filename, Long filelen, String filehash) {
+        fname = prefix + filename;
+        flen = filelen;
+        fhash = filehash;
+        flag = false;
+        genburden();
+        readstatus();
+    }
+
+    public void Receriver(String filename, Long filelen, String filehash, boolean sign) {
         fname = prefix + filename;
         flen = filelen;
         fhash = filehash;
@@ -171,7 +203,7 @@ public class ToolKits {
     }
 
     //unused
-    private void deltmp() {
+    public void deltmp() {
         File f = new File(fname + suffix);
         if (f.exists()) {
             f.delete();
@@ -179,7 +211,7 @@ public class ToolKits {
     }
 
     //unused
-    private void rename() {
+    public void rename() {
         File f = new File(fname);
         File nf = new File(fname.substring(1));
         f.renameTo(nf);
@@ -214,7 +246,6 @@ public class ToolKits {
         BigInteger bigint = new BigInteger(1, digest.digest());
         return bigint.toString(16);
     }
-
 
 
     //public static void main(String args[]){ }
