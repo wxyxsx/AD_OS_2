@@ -1,7 +1,9 @@
 package com.wxy.ados2;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
@@ -18,8 +20,8 @@ import java.util.List;
 
 
 public class DiskUI extends Application {
-    private TextField taddr = new TextField();
-    private TextField tport = new TextField();
+    private TextField taddr = new TextField("localhost");
+    private TextField tport = new TextField("8000");
     private Button bcon = new Button("连接");
     private Button bexit = new Button("断开");
     private ListView<String> lv;
@@ -38,16 +40,126 @@ public class DiskUI extends Application {
     private Button bstop = new Button("暂停");
     private TextArea tastatus = new TextArea();
 
+    private List<String> length = new ArrayList<String>();
     private List<String> name = new ArrayList<String>();
-    private List<String> size = new ArrayList<String>();
+    private ObservableList<String> lst = FXCollections.observableArrayList();
 
+    private Client client;
+
+    private void refreshlst(){
+        Platform.runLater(() -> {
+            if(!lv.getSelectionModel().isEmpty()){
+                lv.getSelectionModel().clearSelection();
+            }
+            lst.removeAll(lst);
+            for(int i=0;i<name.size();i++){
+                lst.add(name.get(i));
+            }
+        });
+    }
 
     public void start(Stage primaryStage) {
         Pane pane = getUI();
+        bcon.setOnAction(e->{
+            client = new Client(tastatus);
+            client.setAddr(taddr.getText());
+            client.setPort(Integer.parseInt(tport.getText()));
+            new Thread(()->{
+                client.Connect();
+                client.Listdir();
+                name = client.getName();
+                length = client.getLength();
+                refreshlst();
+            }).start();
+        });
+        bexit.setOnAction(e->{
+            new Thread(()->{
+                client.Close();
+                name.removeAll(name);
+                refreshlst();
+                tfname.setText("");
+                tfsize.setText("");
+                // other reset operation
+            }).start();
+        });
+        brefresh.setOnAction(e->{
+
+            new Thread(()->{
+                client.Listdir();
+                name = client.getName();
+                length = client.getLength();
+                refreshlst();
+
+            }).start();
+        });
+        brename.setOnAction(e->{
+            new Thread(()->{
+                String so = tfname.getText();
+                String sn = tnewname.getText();
+                if(so.isEmpty()||sn.isEmpty()){
+                    Platform.runLater(()->{
+                        tastatus.appendText("文件名不能为空\n");
+                    });
+                } else {
+                    client.Rename(so,sn);
+                    client.Listdir();
+                    name = client.getName();
+                    length = client.getLength();
+                    refreshlst();
+                }
+            }).start();
+        });
+        bdown.setOnAction(e->{
+            new Thread(()->{
+                String s = tfname.getText();
+                if(s.isEmpty()){
+                    Platform.runLater(()->{
+                        tastatus.appendText("文件名不能为空\n");
+                    });
+                } else {
+                    client.setFname(s);
+                    client.Download();
+                }
+            }).start();
+        });
+        bupload.setOnAction(e->{
+            new Thread(()->{
+                String s = tupload.getText();
+                if(s.isEmpty()){
+                    Platform.runLater(()->{
+                        tastatus.appendText("请选择上传文件\n");
+                    });
+                } else {
+                    client.setFname(s);
+                    client.Upload();
+                    client.Listdir();
+                    name = client.getName();
+                    length = client.getLength();
+                    refreshlst();
+                }
+            }).start();
+        });
+        bstop.setOnAction(e->{
+            new Thread(()->{
+                client.Stop();
+            }).start();
+        });
+        lv.getSelectionModel().selectedItemProperty().addListener(ov->{
+            int i=lv.getSelectionModel().getSelectedIndex();
+            tfname.setText(name.get(i));
+            tfsize.setText(length.get(i));
+        });
+        primaryStage.setOnCloseRequest(e->{
+            if(client!=null){
+                client.Close();
+            }
+            System.exit(0);
+        });
         Scene scene = new Scene(pane,540,370);
         primaryStage.setTitle("网盘");
         primaryStage.setScene(scene);
         primaryStage.show();
+
     }
 
     private Pane getUI(){
@@ -59,8 +171,7 @@ public class DiskUI extends Application {
         topbox.setAlignment(Pos.CENTER);
 
         //name.add("file1");
-        lv = new ListView<>(FXCollections.observableArrayList(name));
-        ListView<String> lv = new ListView<>(FXCollections.observableArrayList(name));
+        lv = new ListView<>(lst);
         lv.setPrefSize(200,300);
         lv.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
 

@@ -8,6 +8,7 @@ import java.util.Scanner;
 
 public class ToolKits {
     private String fname;
+    private String realpath; //todo realpath以及统计线程完成的情况（服务端）
     private long flen;
 
     public String getFname() {

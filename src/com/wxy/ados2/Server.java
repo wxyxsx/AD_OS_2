@@ -241,6 +241,8 @@ public class Server {
 
                 }
             } catch (IOException e) {
+                pool[session] = false;
+                log.info(String.format("[%d] User exit -1", session));
                 e.printStackTrace();
             }
         }

@@ -1,5 +1,8 @@
 package com.wxy.ados2;
 
+import javafx.application.Platform;
+import javafx.scene.control.TextArea;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -10,7 +13,7 @@ import java.util.List;
 import java.util.logging.Logger;
 
 public class Client {
-    private Logger log = Logger.getLogger(Client.class.getName());
+//    private Logger log = Logger.getLogger(Client.class.getName());
     private ToolKits tool;
     private Socket socket;
     private int tnum;
@@ -18,12 +21,53 @@ public class Client {
     private int session;
     private String addr;
     private int port;
+
+    public boolean isBusy() {
+        return busy;
+    }
+
+    public void setBusy(boolean busy) {
+        this.busy = busy;
+    }
+
+    private boolean busy;
+
+    public void setAddr(String addr) {
+        this.addr = addr;
+    }
+
+    public void setPort(int port) {
+        this.port = port;
+    }
+
+    public void setFname(String fname) {
+        this.fname = fname;
+    }
+
     private String fname;
     private Thread[] th;
     DataInputStream input;
     DataOutputStream output;
 
-    public Client() {
+    private TextArea loga;
+    List<String> name;
+    List<String> length;
+
+    public void setLoga(TextArea loga) {
+        this.loga = loga;
+    }
+
+    public List<String> getName() {
+        return name;
+    }
+
+    public List<String> getLength() {
+        return length;
+    }
+
+    public Client(TextArea loga) {
+        busy = false;
+        this.loga = loga;
         tnum = 4;
         bfsize = 1024;
         session = -1;
@@ -34,17 +78,22 @@ public class Client {
 
     public void Connect() {
         try {
+            busy = true;
             socket = new Socket(addr, port);
             input = new DataInputStream(socket.getInputStream());
             output = new DataOutputStream(socket.getOutputStream());
             output.writeInt(session);
             if (socket.isClosed()) {
-                log.info("Server is busy");
+                Platform.runLater(() -> {
+                    loga.appendText("服务器服务人数已满\n");
+                });
                 return;
             }
             session = input.readInt();
-
-            log.info(String.format("Get a session %d", session));
+            Platform.runLater(() -> {
+                loga.appendText("从服务器获得标识 "+session+"\n");
+            });
+            busy = false;
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -55,7 +104,12 @@ public class Client {
     public void Close() {
         // ?
         try {
-            log.info("Close session");
+            if(socket.isClosed()){
+                return;
+            }
+            Platform.runLater(() -> {
+                loga.appendText("断开服务器连接\n");
+            });
             output.writeInt(2);
             output.close();
         } catch (IOException e) {
@@ -65,6 +119,7 @@ public class Client {
 
     public void Download() {
         try {
+            busy = true;
             tool = new ToolKits();
             output.writeInt(0);
             output.writeUTF(fname);
@@ -81,14 +136,19 @@ public class Client {
                 th[i].join();
             }
             if (tool.CheckMd5()) {
-                log.info(fname + " File download succeeded");
+                Platform.runLater(() -> {
+                    loga.appendText(fname +" 文件下载成功\n");
+                });
             } else {
-                log.info(fname + " File download failed");
+                Platform.runLater(() -> {
+                    loga.appendText(fname +" 文件下载失败\n");
+                });
             }
             if (!tool.isStop()) {
                 output.writeInt(1);
             }
             tool = null;
+            busy = false;
         } catch (IOException e) {
             e.printStackTrace();
         } catch (InterruptedException e) {
@@ -98,6 +158,7 @@ public class Client {
 
     public void Upload(){
         try {
+            busy = true;
             tool = new ToolKits();
             output.writeInt(1);
             tool.Sender(fname);
@@ -115,11 +176,14 @@ public class Client {
             for(int i=0;i<tnum;i++){
                 th[i].join();
             }
-            log.info(fname + " File upload finished");
+            Platform.runLater(() -> {
+                loga.appendText(fname +" 文件上传成功\n");
+            });
             if (!tool.isStop()) {
                 output.writeInt(1);
             }
             tool = null;
+            busy = false;
         } catch (IOException e) {
             e.printStackTrace();
         } catch (InterruptedException e) {
@@ -127,12 +191,33 @@ public class Client {
         }
     }
 
-    public void Listdir(){
-        log.info("Request file list");
+    public void Stop(){
+        if(busy==true){
+            Platform.runLater(() -> {
+                loga.appendText("暂停上传/下载\n");
+            });
+            try {
+                tool.setStop(true); //暂停
+                output.writeInt(0); //向服务端发送暂停
+                busy =false;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } else {
+            Platform.runLater(() -> {
+                loga.appendText("没有操作需要暂停\n");
+            });
+        }
+    }
 
-        List<String> name = new ArrayList<String>();
-        List<String> length = new ArrayList<String>();
+    public void Listdir(){
+        Platform.runLater(() -> {
+            loga.appendText("请求文件列表\n");
+        });
+        name = new ArrayList<String>();
+        length = new ArrayList<String>();
         try {
+            busy = true;
             output.writeInt(3);
             int len = input.readInt();
             for(int i=0;i<len;i++){
@@ -140,42 +225,62 @@ public class Client {
                 length.add(input.readUTF());
             }
             output.writeInt(1);
-            for(int i=0;i<name.size();i++){
-                System.out.println(name.get(i)+" "+length.get(i));
-            }
+            Platform.runLater(() -> {
+                loga.appendText("文件列表刷新成功\n");
+            });
+            busy = false;
+//            for(int i=0;i<name.size();i++){
+//                System.out.println(name.get(i)+" "+length.get(i));
+//            }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     public void Delete(String fname){
-        log.info("Delete file "+fname);
+        Platform.runLater(() -> {
+            loga.appendText("请求删除文件 "+fname+"\n");
+        });
         try {
+            busy = true;
             output.writeInt(4);
             output.writeUTF(fname);
             int r = input.readInt();
             if(r==1){
-                System.out.println("Successfully delete file "+fname);
+                Platform.runLater(() -> {
+                    loga.appendText("成功删除文件 "+fname+"\n");
+                });
             } else if(r==0){
-                System.out.println("Failed delete file "+fname);
+                Platform.runLater(() -> {
+                    loga.appendText("删除文件失败 "+fname+"\n");
+                });
             }
+            busy = false;
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     public void Rename(String oldn,String newn){
-        log.info(String.format("rename file %s to %s",oldn,newn));
+        Platform.runLater(() -> {
+            loga.appendText(String.format("请求重命名文件 %s 为 %s\n",oldn,newn));
+        });
         try{
+            busy = true;
             output.writeInt(5);
             output.writeUTF(oldn);
             output.writeUTF(newn);
             int r = input.readInt();
             if(r==1){
-                log.info(String.format("Successfully rename file %s to %s",oldn,newn));
+                Platform.runLater(() -> {
+                    loga.appendText(String.format("重命名文件 %s 为 %s 成功\n",oldn,newn));
+                });
             } else if(r==0){
-                log.info(String.format("Failed rename file %s to %s",oldn,newn));
+                Platform.runLater(() -> {
+                    loga.appendText(String.format("重命名文件 %s 为 %s 失败\n",oldn,newn));
+                });
             }
+            busy = false;
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -189,6 +294,9 @@ public class Client {
         }
 
         public void run() {
+            Platform.runLater(() -> {
+                loga.appendText("启动线程 "+no+"\n");
+            });
             int cur;
             if (no != tnum - 1) {
                 cur = tool.getPerburden();
@@ -197,7 +305,9 @@ public class Client {
             }
             int offset = tool.getStatus(no);
             if (offset == cur) {
-                log.info(String.format("[%d] don't need to download", no));
+                Platform.runLater(() -> {
+                    loga.appendText(String.format("第%d块文件不需要下载", no+"\n"));
+                });
                 return;
             }
 
@@ -211,7 +321,7 @@ public class Client {
                 toutput.writeInt(offset);
                 RandomAccessFile fout = tool.GetOutput(no, offset);
                 byte[] buffer = new byte[bfsize];
-                int i;
+                int i=0;
                 for (i = 0; i < (cur - offset); i++) {
                     if (tool.isStop()) break;
                     int read = tinput.read(buffer);
@@ -219,7 +329,11 @@ public class Client {
                     fout.write(buffer, 0, read);
                 }
                 tool.setStatus(no, offset + i);
-                log.info(String.format("[%d] download %d/%d", no, i, cur-offset));
+                int tp = i;
+                Platform.runLater(() -> {
+                    loga.appendText(String.format("[%d] 文件块下载进度 %d / %d\n", no, tp, cur-offset));
+                });
+
                 fout.close();
                 tinput.close();
             } catch (IOException e) {
@@ -236,6 +350,9 @@ public class Client {
         }
 
         public void run(){
+            Platform.runLater(() -> {
+                loga.appendText("启动线程 "+no+"\n");
+            });
             Socket socket = null;
             try {
                 socket = new Socket(addr, port);
@@ -252,6 +369,9 @@ public class Client {
                     cur = tool.getLastburden();
                 }
                 if(offset == cur){
+                    Platform.runLater(() -> {
+                        loga.appendText(String.format("第%d块文件不需要上传\n", no));
+                    });
                     tinput.close();
                 }
 
@@ -264,7 +384,10 @@ public class Client {
                     if (read == -1) break;
                     toutput.write(buffer, 0, read);
                 }
-                log.info(String.format("[%d] upload %d/%d", no, i, cur-offset));
+                int tp = i;
+                Platform.runLater(() -> {
+                    loga.appendText(String.format("[%d] 上传进度 %d/%d\n", no, tp, cur-offset));
+                });
                 fin.close();;
                 toutput.close();
 
@@ -274,13 +397,13 @@ public class Client {
         }
     }
 
-    public static void main(String args[]) {
-        Client c = new Client();
-        c.Connect();
-        //c.Listdir();
-        //c.Delete("test.txt");
-        c.Rename("test.pdf","new.pdf");
-        //c.Upload();
-        c.Close();
-    }
+//    public static void main(String args[]) {
+//        Client c = new Client();
+//        c.Connect();
+//        //c.Listdir();
+//        //c.Delete("test.txt");
+//        c.Rename("test.pdf","new.pdf");
+//        //c.Upload();
+//        c.Close();
+//    }
 }
