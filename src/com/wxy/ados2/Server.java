@@ -77,7 +77,8 @@ public class Server {
                     new DataOutputStream(s.getOutputStream()).writeInt(curid);
                     new Thread(new handleuser(s, curid)).start();
                 } else if (pool[ctl] == true) {
-                    new Thread(new handlethread(s, curid)).start();
+                    new Thread(new handlethread(s, ctl)).start();
+                    // todo update github
                 }
             }
         } catch (IOException e) {
