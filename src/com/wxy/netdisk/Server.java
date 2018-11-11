@@ -1,4 +1,4 @@
-package com.wxy.ados2;
+package com.wxy.netdisk;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -11,7 +11,6 @@ public class Server {
     private Logger log = Logger.getLogger(Server.class.getName());
     private ToolKits[] tool;
     private boolean[] pool;
-    private int curid;
     private int port;
     private int tnum;
     private int bfsize;
@@ -19,7 +18,6 @@ public class Server {
     private final static int MAXUSER = 10;
 
     public Server() {
-        curid = -1;
         port = 8000;
         tnum = 4;
         bfsize = 1024;
@@ -30,17 +28,19 @@ public class Server {
         }
     }
 
-    private void nextid() {
-        curid = -1;
+    // 找出下一未使用的id
+    private int nextid() {
+        int curid = -1;
         for (int i = 0; i < MAXUSER; i++) {
             if (!pool[i]) {
                 curid = i;
                 break;
             }
         }
+        return curid;
     }
 
-    //for list
+    // 把文件长度转化为更直观的形式
     private String explen(Long len) {
         Long size = len;
         String sign = "B";
@@ -59,26 +59,28 @@ public class Server {
     public void Start() {
         try {
             ServerSocket ss = new ServerSocket(port);
-            log.info(String.format("[SYSTEM] The server listens on port %d", port));
+            log.info(String.format("[系统信息] 服务器正在监听端口 %d", port));
+
             while (true) {
                 Socket s = ss.accept();
                 int ctl = new DataInputStream(s.getInputStream()).readInt();
-                // user identification
+                // 获取用户发送的标识
                 if (ctl == -1) {
-                    nextid();
+                    int curid = nextid();
+                    new DataOutputStream(s.getOutputStream()).writeInt(curid); // 向用户发送它的标识
+
                     if (curid == -1) {
-                        log.info(String.format("[SYSTEM] System can only solve %d users ", MAXUSER));
-                        // full
+                        log.info(String.format("[系统信息] 系统无法处理超过 %d 个用户", MAXUSER));
+                        // 表示nextid()找不到空的标识，服务人数已满
                         s.close();
                         continue;
                     }
-                    log.info(String.format("[%d] New user connected to the system", curid));
-                    pool[curid] = true;
-                    new DataOutputStream(s.getOutputStream()).writeInt(curid);
+                    log.info(String.format("[用户%d] 新的用户建立连接", curid));
+                    pool[curid] = true; // pool中标记标识已经被使用
+
                     new Thread(new handleuser(s, curid)).start();
                 } else if (pool[ctl] == true) {
                     new Thread(new handlethread(s, ctl)).start();
-                    // todo update github
                 }
             }
         } catch (IOException e) {
@@ -86,6 +88,7 @@ public class Server {
         }
     }
 
+    // 处理线程
     class handlethread implements Runnable {
         private Socket socket;
         private DataInputStream input;
@@ -101,8 +104,7 @@ public class Server {
             try {
                 input = new DataInputStream(new BufferedInputStream(socket.getInputStream()));
                 output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream()));
-                log.info(String.format("[%d] New thread connected to the system", session));
-                boolean flag = tool[session].isFlag();
+                boolean flag = tool[session].isFlag(); // 判断是发送还是接收（由控制信道确定）
                 if (flag == true) {
                     send();
                 } else if (flag == false) {
@@ -118,19 +120,20 @@ public class Server {
             try {
                 no = input.readInt();
                 offset = input.readInt();
-
                 if (no != tnum - 1) {
                     cur = tool[session].getPerburden();
                 } else {
                     cur = tool[session].getLastburden();
                 }
+                log.info(String.format("[%d，%d] 新的线程连接系统，请求数据%d/%d", session, no, offset, cur));
                 if (offset == cur) {
                     input.close();
                     return;
-                } // Will not trigger ,check on the client side
+                } // 这句条件判断不会触发，因为客户端已经做出了判断
 
                 RandomAccessFile fin = tool[session].GetInput(no, offset);
                 byte[] buffer = new byte[bfsize];
+
                 for (i = 0; i < (cur - offset); i++) {
                     if (tool[session].isStop()) break;
                     int read = fin.read(buffer);
@@ -138,24 +141,22 @@ public class Server {
                     output.write(buffer, 0, read);
                     output.flush();
                 }
-
                 fin.close();
-
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            log.info(String.format("[%d,%d] Send progress %d/%d", session, no, i + offset, cur));
+            log.info(String.format("[%d,%d] 线程运行结束，发送进度 %d/%d", session, no, i + offset, cur));
         }
 
         private void receive() {
             int no = 0, offset = 0, cur = 0, i = 0;
             long total = 0, sum = 0;
+            RandomAccessFile fout = null;
             try {
                 no = input.readInt(); // 获取文件块的序号
                 offset = tool[session].getStatus(no); // 获取保存的进度
                 output.writeInt(offset); // 发送给客户端
                 output.flush();
-
 
                 if (no != tnum - 1) {
                     cur = tool[session].getPerburden();
@@ -164,40 +165,47 @@ public class Server {
                     cur = tool[session].getLastburden();
                     total = tool[session].getFlen() - (tnum - 1) * tool[session].getPerburden() * bfsize;
                 }
-                if (offset == cur) {
-                    // 如果文件块完成
-                    log.info(String.format("[%d,%d] File blocks do not need to be uploaded", session, no));
+                if (offset == cur) { // 如果文件块完成
+                    tool[session].addfinish(); //还是要告诉finish此线程已经结束
+                    log.info(String.format("[%d,%d] 文件块不需要上传", session, no));
                     input.close();
                     return;
                 }
-                sum = ((long) offset) * bfsize;
 
-                RandomAccessFile fout = tool[session].GetOutput(no, offset);
+                log.info(String.format("[%d，%d] 新的线程连接系统，发送数据%d/%d", session, no, offset, cur));
+
+                sum = ((long) offset) * bfsize;
+                fout = tool[session].GetOutput(no, offset);
                 byte[] buffer = new byte[bfsize];
                 while (sum < total) {
                     if (tool[session].isStop()) break;
                     int read = input.read(buffer);
                     if (read == -1) break;
-                    // System.out.printf("[%d,%d,%d]test \n",no,sum,total);
                     sum = sum + read;
                     fout.write(buffer, 0, read);
                 }
-
+                input.close();
+                // 始终是接收方关闭通道
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            // 防止暂停时程序在read=input.read上出错，所以部分操作需要放在try-catch以外
+            try {
                 fout.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            // 防止文件出错
             tool[session].addfinish();
             if (sum == total) {
                 tool[session].setStatus(no, cur);
             } else {
                 tool[session].setStatus(no, (int) (sum / bfsize));
             }
-            log.info(String.format("[%d,%d] Receive progress %d/%d", session, no, i + offset, cur));
+            log.info(String.format("[%d,%d] 线程运行结束，接收进度 %d/%d", session, no, i + offset, cur));
         }
     }
 
+    // 处理用户
     class handleuser implements Runnable {
         private Socket socket;
         private DataInputStream input;
@@ -216,13 +224,14 @@ public class Server {
 
                 while (true) {
                     tool[session] = null;
+                    // 每个session占用一个tool，同时每次操作都用新的tool
                     if (socket.isClosed()) {
-                        pool[session] = false;
-                        log.info(String.format("[%d] User exit", session));
+                        pool[session] = false; // 如果用户退出
+                        log.info(String.format("[用户%d] 退出系统", session));
                         break;
                     }
                     int op = input.readInt();
-                    // operation id
+                    // 获取操作ID
                     switch (op) {
                         case 0:
                             tool[session] = new ToolKits();
@@ -233,7 +242,7 @@ public class Server {
                             receive();
                             break;
                         case 2:
-                            //close session
+                            // 用户退出
                             input.close();
                             break;
                         case 3:
@@ -246,14 +255,14 @@ public class Server {
                             rename();
                             break;
                         default:
-                            //rename delete list close
 
                     }
 
                 }
             } catch (IOException e) {
                 pool[session] = false;
-                log.info(String.format("[%d] User exit -1", session));
+                // 出现错误同样要回收 是不是应该放在finally中？
+                log.info(String.format("[用户%d] 异常退出", session));
                 e.printStackTrace();
             }
         }
@@ -263,23 +272,23 @@ public class Server {
                 String fname = input.readUTF();
                 tool[session].Sender(fname);
 
-                log.info(String.format("[%d] request to download file %s", session, fname));
+                log.info(String.format("[用户%d] 请求下载文件 %s", session, fname));
 
                 output.writeLong(tool[session].getFlen());
                 output.writeUTF(tool[session].getFhash());
 
                 int r = input.readInt();
-                // signal
+                // 获取信号
                 if (r == 1) {
-                    log.info(String.format("[%d] successfully downloaded file %s", session, fname));
+                    log.info(String.format("[用户%d] 成功下载文件 %s", session, fname));
                 } else if (r == 0) {
+                    // 用户发出暂停命令
                     tool[session].setStop(true);
-                    log.info(String.format("[%d] pauses downloading files %s", session, fname));
+                    log.info(String.format("[用户%d] 暂停下载文件 %s", session, fname));
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            // socket.close()
         }
 
         private void receive() {
@@ -288,15 +297,15 @@ public class Server {
                 long flen = input.readLong();
                 String fhash = input.readUTF();
 
-                log.info(String.format("[%d] request to upload file %s", session, fname));
+                log.info(String.format("[用户%d] 请求上传文件 %s", session, fname));
 
                 tool[session].Receriver(fname, flen, fhash);
                 output.writeInt(1);
-                //ready
+                // 提醒客户端 服务端已经准备接收
 
                 int r = input.readInt();
                 if (r == 1) {
-                    log.info(String.format("[%d] already upload file %s", session, fname));
+                    log.info(String.format("[用户%d] 已经上传文件，等待验证 %s", session, fname));
                     // 需要等待其它线程结束才能验证
                     while (!tool[session].isfinish()) {
                         Thread.sleep(300);
@@ -304,17 +313,17 @@ public class Server {
                     if (tool[session].CheckMd5()) {
                         tool[session].deltmp();
                         tool[session].rename();
-                        log.info(String.format("[%d] File %s verification succeeded", session, fname));
+                        log.info(String.format("[用户%d] 文件 %s 验证成功", session, fname));
                     } else {
-                        log.info(String.format("[%d] File %s verification failed", session, fname));
+                        log.info(String.format("[用户%d] 文件 %s 验证失败", session, fname));
                     }
                 } else if (r == 0) {
                     tool[session].setStop(true);
                     while (!tool[session].isfinish()) {
                         Thread.sleep(300);
-                    } // waiting for threads 可以加个tool中的全局变量判断是否所有线程都结束了
+                    }
                     tool[session].SaveStatus();
-                    log.info(String.format("[%d] pauses uploading files %s", session, fname));
+                    log.info(String.format("[用户%d] 暂停上传文件 %s", session, fname));
                 }
 
             } catch (IOException e) {
@@ -325,7 +334,7 @@ public class Server {
         }
 
         private void list() {
-            log.info(String.format("[%d] request to view the file list", session));
+            log.info(String.format("[用户%d] 请求文件列表", session));
             File file = new File(".");
             File[] flist = file.listFiles();
             List<String> name = new ArrayList<String>();
@@ -338,14 +347,14 @@ public class Server {
                 }
             }
             try {
-                output.writeInt(name.size());
+                output.writeInt(name.size()); // 发送要接收的文件数量
                 for (int i = 0; i < name.size(); i++) {
                     output.writeUTF(name.get(i));
                     output.writeUTF(length.get(i));
                 }
                 int r = input.readInt();
                 if (r == 1) {
-                    log.info(String.format("[%d] Successfully transferred file list", session));
+                    log.info(String.format("[用户%d] 成功接收文件列表", session));
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -370,18 +379,18 @@ public class Server {
             try {
                 String fname = input.readUTF();
                 File f = new File(fname);
-                if (!f.exists()) { // 如果文件不存在
+                if (!f.exists()) {  // 如果文件不存在
                     output.writeInt(0);
-                    log.info(String.format("[%d] File do not exist %s", session, fname));
+                    log.info(String.format("[用户%d] 文件 %s 不存在", session, fname));
                 } else if (!ckfstate(fname)) { // 如果文件不是正在下载
                     output.writeInt(0);
-                    log.info(String.format("[%d] Some users are downloading files %s", session, fname));
+                    log.info(String.format("[用户%d] 文件 %s 正在被下载", session, fname));
                 } else if (!f.delete()) { // 如果文件未能正常删除
                     output.writeInt(0);
-                    log.info(String.format("[%d] Failed deleting file %s", session, fname));
+                    log.info(String.format("[用户%d] 文件 %s 删除失败", session, fname));
                 } else {
                     output.writeInt(1);
-                    log.info(String.format("[%d] Successfully delete file %s", session, fname));
+                    log.info(String.format("[用户%d] 成功删除文件 %s", session, fname));
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -396,19 +405,19 @@ public class Server {
                 File fn = new File(newn);
                 if (!fo.exists()) { //旧文件必须存在
                     output.writeInt(0);
-                    log.info(String.format("[%d] Old named file do not exist %s", session, oldn));
+                    log.info(String.format("[用户%d] 需要重命名的文件 %s 不存在", session, oldn));
                 } else if (fn.exists()) { //新文件不能存在
                     output.writeInt(0);
-                    log.info(String.format("[%d] New named file exist %s", session, newn));
+                    log.info(String.format("[用户%d] 新文件名 %s 已经被使用", session, newn));
                 } else if (!ckfstate(oldn)) { //新文件不存在也不可能被使用
                     output.writeInt(0);
-                    log.info(String.format("[%d] Some users are downloading files %s", session, oldn));
-                } else if(!fo.renameTo(fn)){
+                    log.info(String.format("[用户%d] 文件 %s 正在被下载", session, oldn));
+                } else if (!fo.renameTo(fn)) {
                     output.writeInt(0);
-                    log.info(String.format("[%d] Failed rename file %s to %s", session, oldn,newn));
+                    log.info(String.format("[用户%d] 重命名 %s 为 %s 失败", session, oldn, newn));
                 } else {
                     output.writeInt(1);
-                    log.info(String.format("[%d] Successfully rename file %s to %s", session, oldn,newn));
+                    log.info(String.format("[用户%d] 重命名 %s 为 %s 成功", session, oldn, newn));
                 }
             } catch (IOException e) {
                 e.printStackTrace();

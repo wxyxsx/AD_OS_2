@@ -1,4 +1,4 @@
-package com.wxy.ados2;
+package com.wxy.netdisk;
 
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -18,8 +18,6 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 import java.io.File;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,10 +35,10 @@ public class DiskUI extends Application {
     private Button brename = new Button("重命名");
     private Button bdelete = new Button("删除");
     private TextField tupload = new TextField();
-    private Button buch = new Button ("..");
+    private Button buch = new Button("..");
     private Button bupload = new Button("上传");
     private TextField tdown = new TextField();
-    private Button bdch = new Button ("..");
+    private Button bdch = new Button("..");
     private Button bdown = new Button("下载");
     private Button bstop = new Button("暂停");
     private TextArea tastatus = new TextArea();
@@ -51,25 +49,26 @@ public class DiskUI extends Application {
 
     private Client client;
 
-    private void refreshlst(){
+    private void refreshlst() {
         Platform.runLater(() -> {
-            if(!lv.getSelectionModel().isEmpty()){
+            if (!lv.getSelectionModel().isEmpty()) {
                 lv.getSelectionModel().clearSelection();
-            }
+            } // 取消列表的选中状态
             lst.removeAll(lst);
-            for(int i=0;i<name.size();i++){
-                lst.add(name.get(i));
-            }
+            lst.addAll(name);
+//            for(int i=0;i<name.size();i++){
+//                lst.add(name.get(i));
+//            }
         });
     }
 
     public void start(Stage primaryStage) {
         Pane pane = getUI();
-        bcon.setOnAction(e->{
+        bcon.setOnAction(e -> { // 连接
             client = new Client(tastatus);
             client.setAddr(taddr.getText());
             client.setPort(Integer.parseInt(tport.getText()));
-            new Thread(()->{
+            new Thread(() -> {
                 client.Connect();
                 client.Listdir();
                 name = client.getName();
@@ -77,19 +76,20 @@ public class DiskUI extends Application {
                 refreshlst();
             }).start();
         });
-        bexit.setOnAction(e->{
-            new Thread(()->{
+        bexit.setOnAction(e -> { // 退出
+            new Thread(() -> {
                 client.Close();
                 name.removeAll(name);
                 refreshlst();
-                tfname.setText("");
-                tfsize.setText("");
-                // other reset operation
+                Platform.runLater(() -> {
+                    tfname.setText("");
+                    tfsize.setText("");
+                    tupload.setText("");
+                });
             }).start();
         });
-        brefresh.setOnAction(e->{
-
-            new Thread(()->{
+        brefresh.setOnAction(e -> { // 刷新
+            new Thread(() -> {
                 if (client.isBusy()) {
                     return;
                 }
@@ -100,19 +100,19 @@ public class DiskUI extends Application {
 
             }).start();
         });
-        brename.setOnAction(e->{
-            new Thread(()->{
+        brename.setOnAction(e -> {// 重命名
+            new Thread(() -> {
                 if (client.isBusy()) {
                     return;
                 }
                 String so = tfname.getText();
                 String sn = tnewname.getText();
-                if(so.isEmpty()||sn.isEmpty()){
-                    Platform.runLater(()->{
+                if (so.isEmpty() || sn.isEmpty()) {
+                    Platform.runLater(() -> {
                         tastatus.appendText("文件名不能为空\n");
                     });
                 } else {
-                    client.Rename(so,sn);
+                    client.Rename(so, sn);
                     client.Listdir();
                     name = client.getName();
                     length = client.getLength();
@@ -120,15 +120,15 @@ public class DiskUI extends Application {
                 }
             }).start();
         });
-        bdown.setOnAction(e->{
-            new Thread(()->{
+        bdown.setOnAction(e -> { // 下载
+            new Thread(() -> {
                 if (client.isBusy()) {
                     return;
                 }
                 String sf = tfname.getText();
                 String sp = tdown.getText();
                 if (sf.isEmpty() || sf.isEmpty()) {
-                    Platform.runLater(()->{
+                    Platform.runLater(() -> {
                         tastatus.appendText("请选择文件和文件夹\n");
                     });
                 } else {
@@ -138,14 +138,14 @@ public class DiskUI extends Application {
                 }
             }).start();
         });
-        bupload.setOnAction(e->{
-            new Thread(()->{
+        bupload.setOnAction(e -> { // 上传
+            new Thread(() -> {
                 if (client.isBusy()) {
                     return;
                 }
                 String s = tupload.getText();
-                if(s.isEmpty()){
-                    Platform.runLater(()->{
+                if (s.isEmpty()) {
+                    Platform.runLater(() -> {
                         tastatus.appendText("请选择上传文件\n");
                     });
                 } else {
@@ -158,7 +158,7 @@ public class DiskUI extends Application {
                 }
             }).start();
         });
-        bdelete.setOnAction(e -> {
+        bdelete.setOnAction(e -> { // 删除
             new Thread(() -> {
                 if (client.isBusy()) {
                     return;
@@ -177,18 +177,18 @@ public class DiskUI extends Application {
                 }
             }).start();
         });
-        bstop.setOnAction(e->{
-            new Thread(()->{
+        bstop.setOnAction(e -> { // 暂停
+            new Thread(() -> {
                 client.Stop();
             }).start();
         });
-        lv.getSelectionModel().selectedItemProperty().addListener(ov->{
-            int i=lv.getSelectionModel().getSelectedIndex();
+        lv.getSelectionModel().selectedItemProperty().addListener(ov -> { // 查看文件大小
+            int i = lv.getSelectionModel().getSelectedIndex();
             tfname.setText(name.get(i));
             tfsize.setText(length.get(i));
         });
-        primaryStage.setOnCloseRequest(e->{
-            if(client!=null){
+        primaryStage.setOnCloseRequest(e -> { // 关闭窗口则关闭连接，好像有bug
+            if (client != null) {
                 client.Close();
             }
             System.exit(0);
@@ -206,28 +206,26 @@ public class DiskUI extends Application {
         bdch.setOnAction(e -> {
             File file = dc.showDialog(primaryStage);
             if (file != null) {
-                tdown.setText(file.getPath());
-                //获取文件夹路径
+                tdown.setText(file.getPath()); //获取文件夹路径
             }
         });
-        Scene scene = new Scene(pane,540,370);
+        Scene scene = new Scene(pane, 540, 370);
         primaryStage.setTitle("网盘");
         primaryStage.setScene(scene);
         primaryStage.show();
 
     }
 
-    private Pane getUI(){
+    private Pane getUI() {
         HBox topbox = new HBox(10);
         taddr.setPrefColumnCount(10);
         tport.setPrefColumnCount(4);
-        topbox.getChildren().addAll(new Label("地址:"),taddr,new Label("端口:"),tport,bcon,bexit);
-        topbox.setPadding(new Insets(5,5,5,5));
+        topbox.getChildren().addAll(new Label("地址:"), taddr, new Label("端口:"), tport, bcon, bexit);
+        topbox.setPadding(new Insets(5, 5, 5, 5));
         topbox.setAlignment(Pos.CENTER);
 
-        //name.add("file1");
         lv = new ListView<>(lst);
-        lv.setPrefSize(200,300);
+        lv.setPrefSize(200, 300);
         lv.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
 
         VBox sidebox = new VBox(10);
@@ -236,37 +234,37 @@ public class DiskUI extends Application {
         tfsize.setEditable(false);
         tfname.setPrefColumnCount(8);
         tfsize.setPrefColumnCount(4);
-        h1.getChildren().addAll(new Label("文件名"),tfname,new Label("大小"),tfsize);
+        h1.getChildren().addAll(new Label("文件名"), tfname, new Label("大小"), tfsize);
         tnewname.setPrefColumnCount(8);
         HBox h2 = new HBox(10);
-        h2.getChildren().addAll(brefresh,tnewname,brename,bdelete);
+        h2.getChildren().addAll(brefresh, tnewname, brename, bdelete);
         tupload.setPrefColumnCount(8);
         HBox h3 = new HBox(10);
-        h3.getChildren().addAll(new Label("上传"),tupload,buch,bupload);
+        h3.getChildren().addAll(new Label("上传"), tupload, buch, bupload);
         tdown.setPrefColumnCount(8);
         tdown.setText(new File("").getAbsolutePath());
         // 文件夹的默认路径为当前文件夹
 
         HBox h4 = new HBox(10);
-        h4.getChildren().addAll(new Label("下载"),tdown,bdch,bdown,bstop);
-        h1.setPadding(new Insets(5,5,5,5));
+        h4.getChildren().addAll(new Label("下载"), tdown, bdch, bdown, bstop);
+        h1.setPadding(new Insets(5, 5, 5, 5));
         h1.setAlignment(Pos.CENTER_LEFT);
-        h2.setPadding(new Insets(5,5,5,5));
+        h2.setPadding(new Insets(5, 5, 5, 5));
         h2.setAlignment(Pos.CENTER_LEFT);
-        h3.setPadding(new Insets(5,5,5,5));
+        h3.setPadding(new Insets(5, 5, 5, 5));
         h3.setAlignment(Pos.CENTER_LEFT);
-        h4.setPadding(new Insets(5,5,5,5));
+        h4.setPadding(new Insets(5, 5, 5, 5));
         h4.setAlignment(Pos.CENTER_LEFT);
-        tastatus.setPrefSize(300,120);
+        tastatus.setPrefSize(300, 120);
         tastatus.setEditable(false);
-        sidebox.getChildren().addAll(h1,h2,h3,h4,new ScrollPane(tastatus));
+        sidebox.getChildren().addAll(h1, h2, h3, h4, new ScrollPane(tastatus));
 
-        FlowPane fp = new FlowPane(Orientation.HORIZONTAL,10,10);
-        fp.setPadding(new Insets(5,5,5,5));
-        fp.getChildren().addAll(new ScrollPane(lv),sidebox);
+        FlowPane fp = new FlowPane(Orientation.HORIZONTAL, 10, 10);
+        fp.setPadding(new Insets(5, 5, 5, 5));
+        fp.getChildren().addAll(new ScrollPane(lv), sidebox);
 
         VBox vb = new VBox(10);
-        vb.getChildren().addAll(topbox,fp);
+        vb.getChildren().addAll(topbox, fp);
         return vb;
     }
 }
